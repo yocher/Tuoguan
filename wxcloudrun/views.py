@@ -64,3 +64,16 @@ def get_count():
     """
     counter = Counters.query.filter(Counters.id == 1).first()
     return make_succ_response(0) if counter is None else make_succ_response(counter.count)
+
+@app.route('/notification', methods=['POST'])
+def notification():
+    """
+    :return: 处理通知请求
+    """
+    # 获取请求体参数
+    params = request.get_json()
+    
+    # 这里可以添加处理通知的逻辑
+    print("Received notification:", params)
+    
+    return ''
