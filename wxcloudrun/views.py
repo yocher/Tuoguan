@@ -76,8 +76,9 @@ def notification():
     
     # 这里可以添加处理通知的逻辑
     print("Received notification:", params)
+    logging.info("test")
     logging.info("Received notification:", params)
-
+    logging.info("test2")
     logging.info("headers:", dict(request.headers))
     
     return ''
