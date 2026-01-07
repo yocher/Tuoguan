@@ -5,6 +5,7 @@ from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter
 from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
 import logging
+import json
 
 
 @app.route('/')
@@ -77,7 +78,7 @@ def notification():
     params = request.get_json()
     
     # 这里可以添加处理通知的逻辑
-    app.logger.info('这是一条业务日志', params)
-    app.logger.info('这是一条业务日志2', dict(request.headers))
+    app.logger.info('这是一条业务日志', json.dumps(params))
+    app.logger.info('这是一条业务日志2', json.dumps(dict(request.headers)))
     return ''
  
