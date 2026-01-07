@@ -4,6 +4,7 @@ from run import app
 from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter, update_counterbyid
 from wxcloudrun.model import Counters
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
+import logging
 
 
 @app.route('/')
@@ -75,5 +76,8 @@ def notification():
     
     # 这里可以添加处理通知的逻辑
     print("Received notification:", params)
+    logging.info("Received notification:", params)
+
+    logging.info("headers:", dict(request.headers))
     
     return ''
