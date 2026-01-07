@@ -75,10 +75,12 @@ def notification():
     params = request.get_json()
     
     # 这里可以添加处理通知的逻辑
+    app.logger.info('这是一条业务日志')
     print("Received notification:", params)
     logging.info("test")
     logging.info("Received notification:", params)
     logging.info("test2")
     logging.info("headers:", dict(request.headers))
-    
+    app.logger.info('这是一条业务日志2')
     return ''
+ 
