@@ -1,11 +1,24 @@
 from datetime import datetime
-from flask import render_template, request
+from flask import render_template, request, session
 from run import app
-from wxcloudrun.dao import delete_counterbyid, query_counterbyid, insert_counter, update_counterbyid
-from wxcloudrun.model import Counters
+from wxcloudrun.dao import *
+from wxcloudrun.model import *
 from wxcloudrun.response import make_succ_empty_response, make_succ_response, make_err_response
+from wxcloudrun.utils import *
 import logging
 import json
+import os
+
+logger = logging.getLogger('log')
+
+# 初始化微信API
+WECHAT_APPID = os.environ.get('WECHAT_APPID', '')
+WECHAT_SECRET = os.environ.get('WECHAT_SECRET', '')
+WECHAT_TOKEN = os.environ.get('WECHAT_TOKEN', '')
+TEMPLATE_ID = os.environ.get('WECHAT_TEMPLATE_ID', '')
+MINIPROGRAM_APPID = os.environ.get('MINIPROGRAM_APPID', '')
+
+wechat_api = WeChatAPI(WECHAT_APPID, WECHAT_SECRET)
 
 
 @app.route('/')
@@ -16,23 +29,495 @@ def index():
     return render_template('index.html')
 
 
+# ==================== 管理员接口 ====================
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    """管理员登录"""
+    try:
+        params = request.get_json()
+        username = params.get('username')
+        password = params.get('password')
+
+        if not username or not password:
+            return make_err_response('用户名和密码不能为空')
+
+        admin = get_admin_by_username(username)
+        if not admin:
+            return make_err_response('用户名或密码错误')
+
+        import hashlib
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        if admin.password_hash != password_hash:
+            return make_err_response('用户名或密码错误')
+
+        session['admin_id'] = admin.id
+        session['admin_username'] = admin.username
+
+        return make_succ_response({
+            'id': admin.id,
+            'username': admin.username,
+            'name': admin.name
+        })
+    except Exception as e:
+        logger.error(f"管理员登录失败: {e}")
+        return make_err_response('登录失败')
+
+
+@app.route('/api/admin/logout', methods=['POST'])
+@require_admin_auth
+def admin_logout():
+    """管理员登出"""
+    session.clear()
+    return make_succ_empty_response()
+
+
+@app.route('/api/admin/students', methods=['GET'])
+@require_admin_auth
+def admin_get_students():
+    """获取所有学生列表"""
+    try:
+        class_name = request.args.get('class_name')
+        if class_name:
+            students = get_students_by_class(class_name)
+        else:
+            students = get_all_students()
+
+        return make_succ_response([serialize_student(s) for s in students])
+    except Exception as e:
+        logger.error(f"获取学生列表失败: {e}")
+        return make_err_response('获取学生列表失败')
+
+
+@app.route('/api/admin/students', methods=['POST'])
+@require_admin_auth
+def admin_create_student():
+    """创建学生"""
+    try:
+        params = request.get_json()
+        name = params.get('name')
+        student_number = params.get('student_number')
+        class_name = params.get('class_name')
+        grade = params.get('grade')
+        avatar_url = params.get('avatar_url')
+
+        if not name or not student_number or not class_name:
+            return make_err_response('学生姓名、学号和班级不能为空')
+
+        existing = get_student_by_number(student_number)
+        if existing:
+            return make_err_response('学号已存在')
+
+        student = Student(
+            name=name,
+            student_number=student_number,
+            class_name=class_name,
+            grade=grade,
+            avatar_url=avatar_url
+        )
+        student = create_student(student)
+
+        return make_succ_response(serialize_student(student))
+    except Exception as e:
+        logger.error(f"创建学生失败: {e}")
+        return make_err_response('创建学生失败')
+
+
+@app.route('/api/admin/students/<int:student_id>', methods=['PUT'])
+@require_admin_auth
+def admin_update_student(student_id):
+    """更新学生信息"""
+    try:
+        student = get_student_by_id(student_id)
+        if not student:
+            return make_err_response('学生不存在')
+
+        params = request.get_json()
+        if 'name' in params:
+            student.name = params['name']
+        if 'class_name' in params:
+            student.class_name = params['class_name']
+        if 'grade' in params:
+            student.grade = params['grade']
+        if 'avatar_url' in params:
+            student.avatar_url = params['avatar_url']
+
+        student = update_student(student)
+        return make_succ_response(serialize_student(student))
+    except Exception as e:
+        logger.error(f"更新学生失败: {e}")
+        return make_err_response('更新学生失败')
+
+
+@app.route('/api/admin/students/<int:student_id>', methods=['DELETE'])
+@require_admin_auth
+def admin_delete_student(student_id):
+    """删除学生"""
+    try:
+        success = delete_student(student_id)
+        if success:
+            return make_succ_empty_response()
+        else:
+            return make_err_response('学生不存在')
+    except Exception as e:
+        logger.error(f"删除学生失败: {e}")
+        return make_err_response('删除学生失败')
+
+
+@app.route('/api/admin/parents', methods=['GET'])
+@require_admin_auth
+def admin_get_parents():
+    """获取所有家长列表"""
+    try:
+        parents = get_all_parents()
+        return make_succ_response([serialize_parent(p) for p in parents])
+    except Exception as e:
+        logger.error(f"获取家长列表失败: {e}")
+        return make_err_response('获取家长列表失败')
+
+
+@app.route('/api/admin/parents', methods=['POST'])
+@require_admin_auth
+def admin_create_parent():
+    """创建家长"""
+    try:
+        params = request.get_json()
+        openid = params.get('openid')
+        name = params.get('name')
+        phone = params.get('phone')
+
+        if not openid:
+            return make_err_response('openid不能为空')
+
+        existing = get_parent_by_openid(openid)
+        if existing:
+            return make_err_response('该openid已存在')
+
+        parent = Parent(openid=openid, name=name, phone=phone)
+        parent = create_parent(parent)
+
+        return make_succ_response(serialize_parent(parent))
+    except Exception as e:
+        logger.error(f"创建家长失败: {e}")
+        return make_err_response('创建家长失败')
+
+
+@app.route('/api/admin/teachers', methods=['GET'])
+@require_admin_auth
+def admin_get_teachers():
+    """获取所有教师列表"""
+    try:
+        teachers = get_all_teachers()
+        return make_succ_response([serialize_teacher(t) for t in teachers])
+    except Exception as e:
+        logger.error(f"获取教师列表失败: {e}")
+        return make_err_response('获取教师列表失败')
+
+
+@app.route('/api/admin/teachers', methods=['POST'])
+@require_admin_auth
+def admin_create_teacher():
+    """创建教师"""
+    try:
+        params = request.get_json()
+        openid = params.get('openid')
+        name = params.get('name')
+        phone = params.get('phone')
+
+        if not openid or not name:
+            return make_err_response('openid和姓名不能为空')
+
+        existing = get_teacher_by_openid(openid)
+        if existing:
+            return make_err_response('该openid已存在')
+
+        teacher = Teacher(openid=openid, name=name, phone=phone)
+        teacher = create_teacher(teacher)
+
+        return make_succ_response(serialize_teacher(teacher))
+    except Exception as e:
+        logger.error(f"创建教师失败: {e}")
+        return make_err_response('创建教师失败')
+
+
+@app.route('/api/admin/parent-student', methods=['POST'])
+@require_admin_auth
+def admin_bind_parent_student():
+    """绑定家长和学生关系"""
+    try:
+        params = request.get_json()
+        parent_id = params.get('parent_id')
+        student_id = params.get('student_id')
+        relationship = params.get('relationship')
+
+        if not parent_id or not student_id:
+            return make_err_response('家长ID和学生ID不能为空')
+
+        parent = get_parent_by_id(parent_id)
+        if not parent:
+            return make_err_response('家长不存在')
+
+        student = get_student_by_id(student_id)
+        if not student:
+            return make_err_response('学生不存在')
+
+        create_parent_student_relation(parent_id, student_id, relationship)
+        return make_succ_empty_response()
+    except Exception as e:
+        logger.error(f"绑定家长学生关系失败: {e}")
+        return make_err_response('绑定失败')
+
+
+@app.route('/api/admin/parent-student', methods=['DELETE'])
+@require_admin_auth
+def admin_unbind_parent_student():
+    """解绑家长和学生关系"""
+    try:
+        params = request.get_json()
+        parent_id = params.get('parent_id')
+        student_id = params.get('student_id')
+
+        if not parent_id or not student_id:
+            return make_err_response('家长ID和学生ID不能为空')
+
+        delete_parent_student_relation(parent_id, student_id)
+        return make_succ_empty_response()
+    except Exception as e:
+        logger.error(f"解绑家长学生关系失败: {e}")
+        return make_err_response('解绑失败')
+
+
+# ==================== 教师接口 ====================
+
+@app.route('/api/teacher/students', methods=['GET'])
+@require_auth('teacher')
+def teacher_get_students():
+    """教师获取学生列表"""
+    try:
+        class_name = request.args.get('class_name')
+        if class_name:
+            students = get_students_by_class(class_name)
+        else:
+            students = get_all_students()
+
+        return make_succ_response([serialize_student(s) for s in students])
+    except Exception as e:
+        logger.error(f"获取学生列表失败: {e}")
+        return make_err_response('获取学生列表失败')
+
+
+@app.route('/api/teacher/pickup-records', methods=['POST'])
+@require_auth('teacher')
+def teacher_create_pickup_record():
+    """教师创建接送记录"""
+    try:
+        student_id = request.form.get('student_id')
+        notes = request.form.get('notes', '')
+        photo = request.files.get('photo')
+
+        if not student_id:
+            return make_err_response('学生ID不能为空')
+
+        if not photo:
+            return make_err_response('照片不能为空')
+
+        student = get_student_by_id(int(student_id))
+        if not student:
+            return make_err_response('学生不存在')
+
+        photo_url = upload_file_to_storage(photo)
+        if not photo_url:
+            return make_err_response('照片上传失败')
+
+        teacher = request.current_user
+        pickup_record = PickupRecord(
+            student_id=student.id,
+            teacher_id=teacher.id,
+            photo_url=photo_url,
+            notes=notes
+        )
+        pickup_record = create_pickup_record(pickup_record)
+
+        parents = get_parents_by_student_id(student.id)
+        for parent in parents:
+            miniprogram_data = {
+                'appid': MINIPROGRAM_APPID,
+                'pagepath': f'pages/pickup-detail/index?id={pickup_record.id}'
+            }
+            template_data = {
+                'first': {'value': f'{student.name}已被接走', 'color': '#173177'},
+                'keyword1': {'value': student.name, 'color': '#173177'},
+                'keyword2': {'value': pickup_record.pickup_time.strftime('%Y-%m-%d %H:%M:%S'), 'color': '#173177'},
+                'keyword3': {'value': teacher.name, 'color': '#173177'},
+                'remark': {'value': '点击查看接送照片', 'color': '#173177'}
+            }
+            wechat_api.send_template_message(
+                parent.openid,
+                TEMPLATE_ID,
+                template_data,
+                miniprogram_data
+            )
+
+        return make_succ_response(serialize_pickup_record(pickup_record))
+    except Exception as e:
+        logger.error(f"创建接送记录失败: {e}")
+        return make_err_response('创建接送记录失败')
+
+
+@app.route('/api/teacher/pickup-records', methods=['GET'])
+@require_auth('teacher')
+def teacher_get_pickup_records():
+    """教师获取接送记录列表"""
+    try:
+        limit = request.args.get('limit', type=int)
+        records = get_all_pickup_records(limit)
+        return make_succ_response([serialize_pickup_record(r) for r in records])
+    except Exception as e:
+        logger.error(f"获取接送记录失败: {e}")
+        return make_err_response('获取接送记录失败')
+
+
+# ==================== 家长接口 ====================
+
+@app.route('/api/parent/students', methods=['GET'])
+@require_auth('parent')
+def parent_get_students():
+    """家长获取自己的学生列表"""
+    try:
+        parent = request.current_user
+        students = get_students_by_parent_id(parent.id)
+        return make_succ_response([serialize_student(s) for s in students])
+    except Exception as e:
+        logger.error(f"获取学生列表失败: {e}")
+        return make_err_response('获取学生列表失败')
+
+
+@app.route('/api/parent/pickup-records', methods=['GET'])
+@require_auth('parent')
+def parent_get_pickup_records():
+    """家长获取接送记录"""
+    try:
+        parent = request.current_user
+        limit = request.args.get('limit', type=int)
+        records = get_pickup_records_by_parent_openid(parent.openid, limit)
+        return make_succ_response([serialize_pickup_record(r) for r in records])
+    except Exception as e:
+        logger.error(f"获取接送记录失败: {e}")
+        return make_err_response('获取接送记录失败')
+
+
+@app.route('/api/parent/pickup-records/<int:record_id>', methods=['GET'])
+@require_auth('parent')
+def parent_get_pickup_record_detail(record_id):
+    """家长获取接送记录详情"""
+    try:
+        parent = request.current_user
+        record = get_pickup_record_by_id(record_id)
+
+        if not record:
+            return make_err_response('记录不存在')
+
+        student_ids = [s.id for s in get_students_by_parent_id(parent.id)]
+        if record.student_id not in student_ids:
+            return make_err_response('无权访问该记录')
+
+        return make_succ_response(serialize_pickup_record(record))
+    except Exception as e:
+        logger.error(f"获取接送记录详情失败: {e}")
+        return make_err_response('获取接送记录详情失败')
+
+
+# ==================== 通用接口 ====================
+
+@app.route('/api/user/info', methods=['GET'])
+@require_auth()
+def get_user_info():
+    """获取当前用户信息"""
+    try:
+        user = request.current_user
+        role = request.user_role
+
+        if role == 'parent':
+            return make_succ_response({
+                'role': 'parent',
+                'user': serialize_parent(user)
+            })
+        elif role == 'teacher':
+            return make_succ_response({
+                'role': 'teacher',
+                'user': serialize_teacher(user)
+            })
+        else:
+            return make_err_response('用户角色未知')
+    except Exception as e:
+        logger.error(f"获取用户信息失败: {e}")
+        return make_err_response('获取用户信息失败')
+
+
+# ==================== 微信公众号事件接口 ====================
+
+@app.route('/api/wechat/callback', methods=['GET', 'POST'])
+def wechat_callback():
+    """微信公众号事件回调"""
+    if request.method == 'GET':
+        signature = request.args.get('signature', '')
+        timestamp = request.args.get('timestamp', '')
+        nonce = request.args.get('nonce', '')
+        echostr = request.args.get('echostr', '')
+
+        if verify_wechat_signature(signature, timestamp, nonce, WECHAT_TOKEN):
+            return echostr
+        else:
+            return 'Invalid signature'
+
+    elif request.method == 'POST':
+        try:
+            xml_data = request.data
+            msg = parse_wechat_xml(xml_data)
+
+            if not msg:
+                return 'success'
+
+            msg_type = msg.get('MsgType')
+            event = msg.get('Event')
+            openid = msg.get('FromUserName')
+
+            if msg_type == 'event' and event == 'subscribe':
+                existing_parent = get_parent_by_openid(openid)
+                if not existing_parent:
+                    parent = Parent(openid=openid)
+                    create_parent(parent)
+                    logger.info(f"新用户关注，创建家长记录: {openid}")
+
+            return 'success'
+        except Exception as e:
+            logger.error(f"处理微信回调失败: {e}")
+            return 'success'
+
+
+# ==================== 静态文件服务 ====================
+
+@app.route('/uploads/<path:filename>')
+def uploaded_file(filename):
+    """提供上传文件访问"""
+    from flask import send_from_directory
+    return send_from_directory('uploads', filename)
+
+
+# ==================== 旧接口保留 ====================
+
 @app.route('/api/count', methods=['POST'])
 def count():
     """
     :return:计数结果/清除结果
     """
-
-    # 获取请求体参数
     params = request.get_json()
 
-    # 检查action参数
     if 'action' not in params:
         return make_err_response('缺少action参数')
 
-    # 按照不同的action的值，进行不同的操作
     action = params['action']
 
-    # 执行自增操作
     if action == 'inc':
         counter = query_counterbyid(1)
         if counter is None:
@@ -49,12 +534,10 @@ def count():
             update_counterbyid(counter)
         return make_succ_response(counter.count)
 
-    # 执行清0操作
     elif action == 'clear':
         delete_counterbyid(1)
         return make_succ_empty_response()
 
-    # action参数错误
     else:
         return make_err_response('action参数错误')
 
@@ -66,19 +549,3 @@ def get_count():
     """
     counter = Counters.query.filter(Counters.id == 1).first()
     return make_succ_response(0) if counter is None else make_succ_response(counter.count)
-
-@app.route('/notification', methods=['POST'])
-def notification():
-    """
-    :return: 处理通知请求
-    """
-    # 获取请求体参数
-    print("hello")
-    logging.info("test")
-    params = request.get_json()
-    
-    # 这里可以添加处理通知的逻辑
-    app.logger.info('这是一条业务日志', json.dumps(params))
-    app.logger.info('这是一条业务日志2', json.dumps(dict(request.headers)))
-    return ''
- 

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -X POST http://192.168.50.9/api/admin/login -H \"Content-Type: application/json\" -d \"{\"\"username\"\":\"\"admin\"\",\"\"password\"\":\"\"admin123\"\"}\")",
+      "Bash(curl -X POST http://192.168.50.9/api/admin/students -H \"Content-Type: application/json\" -d \"{\"\"name\"\":\"\"张三\"\",\"\"student_number\"\":\"\"2024001\"\",\"\"class_name\"\":\"\"一年级1班\"\",\"\"grade\"\":\"\"一年级\"\"}\" -c cookies.txt -b cookies.txt)",
+      "Bash(curl -X POST http://192.168.50.9/api/admin/login -H \"Content-Type: application/json\" -d \"{\"\"username\"\":\"\"admin\"\",\"\"password\"\":\"\"admin123\"\"}\" -c cookies.txt)",
+      "Bash(curl -X POST http://192.168.50.9/api/admin/students -H \"Content-Type: application/json\" -d \"{\"\"name\"\":\"\"张三\"\",\"\"student_number\"\":\"\"2024001\"\",\"\"class_name\"\":\"\"一年级1班\"\",\"\"grade\"\":\"\"一年级\"\"}\" -b cookies.txt)"
+    ]
+  }
+}
