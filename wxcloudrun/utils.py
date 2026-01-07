@@ -222,6 +222,7 @@ def serialize_parent(parent):
         'openid': parent.openid,
         'name': parent.name,
         'phone': parent.phone,
+        'avatar_url': parent.avatar_url,
         'created_at': parent.created_at.strftime('%Y-%m-%d %H:%M:%S') if parent.created_at else None
     }
 
@@ -235,6 +236,7 @@ def serialize_teacher(teacher):
         'openid': teacher.openid,
         'name': teacher.name,
         'phone': teacher.phone,
+        'avatar_url': teacher.avatar_url,
         'created_at': teacher.created_at.strftime('%Y-%m-%d %H:%M:%S') if teacher.created_at else None
     }
 

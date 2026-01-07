@@ -377,6 +377,30 @@ def teacher_get_pickup_records():
         return make_err_response('获取接送记录失败')
 
 
+@app.route('/api/teacher/avatar', methods=['POST'])
+@require_auth('teacher')
+def teacher_upload_avatar():
+    """教师上传头像"""
+    try:
+        teacher = request.current_user
+        avatar = request.files.get('avatar')
+
+        if not avatar:
+            return make_err_response('头像文件不能为空')
+
+        avatar_url = upload_file_to_storage(avatar, folder='avatars')
+        if not avatar_url:
+            return make_err_response('头像上传失败')
+
+        teacher.avatar_url = avatar_url
+        teacher = update_teacher(teacher)
+
+        return make_succ_response({'avatar_url': avatar_url})
+    except Exception as e:
+        logger.error(f"上传头像失败: {e}")
+        return make_err_response('上传头像失败')
+
+
 # ==================== 家长接口 ====================
 
 @app.route('/api/parent/students', methods=['GET'])
@@ -425,6 +449,30 @@ def parent_get_pickup_record_detail(record_id):
     except Exception as e:
         logger.error(f"获取接送记录详情失败: {e}")
         return make_err_response('获取接送记录详情失败')
+
+
+@app.route('/api/parent/avatar', methods=['POST'])
+@require_auth('parent')
+def parent_upload_avatar():
+    """家长上传头像"""
+    try:
+        parent = request.current_user
+        avatar = request.files.get('avatar')
+
+        if not avatar:
+            return make_err_response('头像文件不能为空')
+
+        avatar_url = upload_file_to_storage(avatar, folder='avatars')
+        if not avatar_url:
+            return make_err_response('头像上传失败')
+
+        parent.avatar_url = avatar_url
+        parent = update_parent(parent)
+
+        return make_succ_response({'avatar_url': avatar_url})
+    except Exception as e:
+        logger.error(f"上传头像失败: {e}")
+        return make_err_response('上传头像失败')
 
 
 # ==================== 通用接口 ====================

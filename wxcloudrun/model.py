@@ -37,6 +37,7 @@ class Parent(db.Model):
     openid = db.Column(db.String(100), unique=True, nullable=False)
     name = db.Column(db.String(100))
     phone = db.Column(db.String(20))
+    avatar_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
@@ -49,6 +50,7 @@ class Teacher(db.Model):
     openid = db.Column(db.String(100), unique=True, nullable=False)
     name = db.Column(db.String(100), nullable=False)
     phone = db.Column(db.String(20))
+    avatar_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.now)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
