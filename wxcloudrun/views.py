@@ -477,6 +477,124 @@ def parent_upload_avatar():
 
 # ==================== 通用接口 ====================
 
+@app.route('/api/wechat/login', methods=['POST'])
+def wechat_login():
+    """微信小程序登录接口
+    
+    请求参数:
+        code: 微信小程序 wx.login() 获取的 code
+    
+    返回数据:
+        openid: 用户openid
+        role: 用户角色 ('parent' 或 'teacher')
+        user: 用户信息对象
+        is_new_user: 是否为新用户（仅新用户返回）
+    """
+    try:
+        params = request.get_json()
+        if not params:
+            return make_err_response('请求参数不能为空')
+        
+        code = params.get('code')
+
+        if not code:
+            return make_err_response('code不能为空')
+
+        # 使用云托管环境，openid 会自动注入到请求头
+        openid = request.headers.get('X-WX-OPENID')
+
+        if not openid:
+            # 如果没有自动注入，则调用微信接口获取
+            miniprogram_secret = os.environ.get('MINIPROGRAM_SECRET', '')
+            if not MINIPROGRAM_APPID or not miniprogram_secret:
+                logger.error("小程序配置缺失: MINIPROGRAM_APPID 或 MINIPROGRAM_SECRET")
+                return make_err_response('服务器配置错误，请联系管理员')
+
+            import requests as http_requests
+            url = 'https://api.weixin.qq.com/sns/jscode2session'
+            try:
+                response = http_requests.get(url, params={
+                    'appid': MINIPROGRAM_APPID,
+                    'secret': miniprogram_secret,
+                    'js_code': code,
+                    'grant_type': 'authorization_code'
+                }, timeout=10)
+
+                data = response.json()
+                
+                # 检查微信API返回的错误
+                if 'errcode' in data:
+                    error_msg = data.get('errmsg', '未知错误')
+                    logger.error(f"微信登录API错误: errcode={data['errcode']}, errmsg={error_msg}")
+                    if data['errcode'] == 40029:
+                        return make_err_response('code无效或已过期，请重新登录')
+                    elif data['errcode'] == 45011:
+                        return make_err_response('登录频率过高，请稍后再试')
+                    else:
+                        return make_err_response(f'微信登录失败: {error_msg}')
+                
+                if 'openid' not in data:
+                    logger.error(f"微信登录失败，未返回openid: {data}")
+                    return make_err_response('微信登录失败，未获取到用户信息')
+
+                openid = data['openid']
+                session_key = data.get('session_key', '')
+                logger.info(f"成功获取openid: {openid[:10]}...")
+                
+            except http_requests.exceptions.Timeout:
+                logger.error("微信API请求超时")
+                return make_err_response('网络请求超时，请稍后重试')
+            except http_requests.exceptions.RequestException as e:
+                logger.error(f"微信API请求异常: {e}")
+                return make_err_response('网络请求失败，请稍后重试')
+            except Exception as e:
+                logger.error(f"调用微信API异常: {e}")
+                return make_err_response('登录服务异常，请稍后重试')
+
+        # 检查用户是否已存在
+        try:
+            parent = get_parent_by_openid(openid)
+            teacher = get_teacher_by_openid(openid)
+        except Exception as e:
+            logger.error(f"查询用户信息失败: {e}")
+            return make_err_response('查询用户信息失败')
+
+        if parent:
+            logger.info(f"家长用户登录: {openid[:10]}...")
+            return make_succ_response({
+                'openid': openid,
+                'role': 'parent',
+                'user': serialize_parent(parent)
+            })
+        elif teacher:
+            logger.info(f"教师用户登录: {openid[:10]}...")
+            return make_succ_response({
+                'openid': openid,
+                'role': 'teacher',
+                'user': serialize_teacher(teacher)
+            })
+        else:
+            # 新用户，自动创建家长账号
+            try:
+                new_parent = Parent(openid=openid)
+                new_parent = create_parent(new_parent)
+                logger.info(f"新用户登录，创建家长账号: {openid[:10]}...")
+                
+                return make_succ_response({
+                    'openid': openid,
+                    'role': 'parent',
+                    'user': serialize_parent(new_parent),
+                    'is_new_user': True
+                })
+            except Exception as e:
+                logger.error(f"创建新用户失败: {e}")
+                return make_err_response('创建用户失败，请稍后重试')
+                
+    except Exception as e:
+        logger.error(f"微信登录失败: {e}", exc_info=True)
+        return make_err_response('登录失败，请稍后重试')
+
+
 @app.route('/api/user/info', methods=['GET'])
 @require_auth()
 def get_user_info():
