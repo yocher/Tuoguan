@@ -17,7 +17,7 @@ def get_openid_from_request():
     """
     从请求头中获取openid（WeChat Cloud Hosting自动注入）
     """
-    return request.headers.get('X-WX-OPENID', None)
+    return request.headers.get('X-WX-OPENID', request.headers.get('X-WX-FROM-OPENID', None))
 
 
 def require_auth(role=None):

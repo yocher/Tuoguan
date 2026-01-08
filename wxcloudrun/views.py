@@ -596,11 +596,10 @@ def wechat_login():
 
 
 @app.route('/api/user/info', methods=['GET'])
-# @require_auth()
+@require_auth()
 def get_user_info():
     """获取当前用户信息"""
     try:
-        app.logger.info(f"Headers: {dict(request.headers)}")
         user = request.current_user
         role = request.user_role
 
