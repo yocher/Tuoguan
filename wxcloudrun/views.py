@@ -638,6 +638,7 @@ def wechat_callback():
 
     elif request.method == 'POST':
         try:
+            app.logger.info(f"收到微信回调消息{request.data.decode()}")
             xml_data = request.data
             msg = parse_wechat_xml(xml_data)
 
