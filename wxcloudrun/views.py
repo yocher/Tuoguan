@@ -482,6 +482,8 @@ def parent_upload_avatar():
 def get_user_info():
     """获取当前用户信息"""
     try:
+        app.logger.info("获取用户信息接口被调用:")
+        return ''
         user = request.current_user
         role = request.user_role
 
