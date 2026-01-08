@@ -518,7 +518,7 @@ def wechat_login():
                     'secret': miniprogram_secret,
                     'js_code': code,
                     'grant_type': 'authorization_code'
-                }, timeout=10)
+                }, timeout=10, verify=False)
 
                 data = response.json()
                 
