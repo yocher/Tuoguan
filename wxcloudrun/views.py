@@ -495,7 +495,7 @@ def wechat_login():
         if not params:
             return make_err_response('请求参数不能为空')
         
-        code = params.get('code')
+        code = params.get('code') 
 
         if not code:
             return make_err_response('code不能为空')
